@@ -154,7 +154,8 @@
 
     </div>
   </div>
-    <script type="module">
+
+  <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, collection, addDoc, deleteDoc, query, where, getDocs, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
@@ -209,6 +210,30 @@
     const chatHeaderBar = document.getElementById('chat-header-bar');
     const chatTargetText = document.getElementById('chat-target-text');
     const closeChatBtn = document.getElementById('close-chat-btn');
+
+    // Notification အသံမြည်စေရန် (Web Audio API ဖြင့် ဖန်တီးထားသည်)
+    function playNotificationSound() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5 note
+        oscillator.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.1); // A5 note
+
+        gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.2);
+      } catch (e) {
+        console.log("Audio not supported or blocked");
+      }
+    }
 
     function generateMyanmarId() {
       const chars = "ကခဂဃငစဆဇဈညဋဌဍဎဏတထဒဓနပဖဗဘမယရလဝသဟဠအ၀၁၂၃၄၅၆၇၈၉";
@@ -392,6 +417,13 @@
 
         const friendRef = doc(db, "users", friend.uid);
         await updateDoc(friendRef, {
+          friends: arrayRemove({        const userRef = doc(db, "users", currentUser.uid);
+        await updateDoc(userRef, {
+          friends: arrayRemove(friend)
+        });
+
+        const friendRef = doc(db, "users", friend.uid);
+        await updateDoc(friendRef, {
           friends: arrayRemove({
             uid: currentUser.uid,
             displayName: currentUser.displayName || 'Anonymous',
@@ -413,6 +445,12 @@
       if (reqUnsubscribe) reqUnsubscribe();
 
       reqUnsubscribe = onSnapshot(reqQuery, (snapshot) => {
+        // Request အသစ်ဝင်လာပါက အသံမြည်ရန် (ယခင် အရေအတွက်ထက် တိုးလာမှ မြည်မည်)
+        if (snapshot.size > (window.lastReqCount || 0)) {
+          playNotificationSound();
+        }
+        window.lastReqCount = snapshot.size;
+
         requestsListArea.innerHTML = '';
         const count = snapshot.size;
         
@@ -704,4 +742,5 @@
   </script>
 </body>
 </html>
-  
+
+    
