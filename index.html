@@ -114,7 +114,8 @@
       <div id="search-section" class="panel-box hidden">
         <div class="section-title">သူငယ်ချင်း ID ဖြင့် ရှာရန်</div>
         <div class="search-input-group">
-          <input type="text" id="search-id-input" placeholder="မြန်မာ ID ရိုက်ပါ..." />
+          <!-- autocomplete="off" ထည့်သွင်းထားပါသည် -->
+          <input type="text" id="search-id-input" placeholder="မြန်မာ ID ရိုက်ပါ..." autocomplete="off" />
           <button id="find-user-btn">ရှာပါ</button>
         </div>
         <div id="search-result-area"></div>
@@ -141,7 +142,7 @@
         <div id="chat-box" class="chat-box"></div>
 
         <div class="input-box">
-          <input type="text" id="message-input" placeholder="စာရိုက်ပါ..." />
+          <input type="text" id="message-input" placeholder="စာရိုက်ပါ..." autocomplete="off" />
           <button id="send-btn">Send</button>
         </div>
       </div>
@@ -368,7 +369,6 @@
               statusTextDisplay = "Online";
             } else if (data.lastSeen && typeof data.lastSeen.toDate === 'function') {
               const dateObj = data.lastSeen.toDate();
-              // ရက်စွဲနှင့် အချိန် (နာရီ၊ မိနစ်၊ စက္ကန့် အတိအကျ) ပေါ်စေရန်
               const timeString = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
               const dateString = dateObj.toLocaleDateString();
               statusTextDisplay = `Last seen: ${dateString} ${timeString}`;
@@ -389,7 +389,6 @@
             </div>
           `;
 
-          // စကားပြောရန် ခလုတ် သို့မဟုတ် အချက်အလက်ကဒ်ကို နှိပ်လျှင် Chat ရန်
           item.querySelector('.friend-info-area').addEventListener('click', () => {
             startPrivateChat(friend);
           });
@@ -397,7 +396,6 @@
             startPrivateChat(friend);
           });
 
-          // Unfriend ခလုတ် နှိပ်လျှင်
           item.querySelector('.btn-unfriend').addEventListener('click', (e) => {
             e.stopPropagation();
             removeFriend(friend);
@@ -469,7 +467,7 @@
         loginScreen.classList.remove('hidden');
         chatScreen.classList.add('hidden');
         chatWrapper.classList.add('hidden');
-        emptyStateMsg.classList.remove('hidden');
+        emptyStateMsg.classList.add('hidden');
       }
     });
 
