@@ -348,8 +348,8 @@
 
             if (isOnline) {
               statusTextDisplay = "Online";
-            } else if (data.lastSeen) {
-              // Firebase timestamp ကို မြန်မာအချိန်အနေဖြင့် အတိအကျပြောင်းရန်
+            } else if (data.lastSeen && typeof data.lastSeen.toDate === 'function') {
+              // Firebase Timestamp ကို Date သို့ အတိအကျပြောင်းခြင်း
               const dateObj = data.lastSeen.toDate();
               const timeString = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
               const dateString = dateObj.toLocaleDateString();
