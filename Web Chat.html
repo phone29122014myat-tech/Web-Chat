@@ -5,11 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Firebase Web Chat App with Friends</title>
 
-  <!-- ဖိုင်ဖွင့်လိုက်သည်နှင့် သင့် Netlify Web Link သို့ တိုက်ရိုက် ခုန်ကူးပေးမည့် Script -->
-  <script>
-    window.location.replace("https://frabjous-gecko-9baa15.netlify.app");
-  </script>
-
   <style>
     * { box-sizing: border-box; font-family: Arial, sans-serif; }
     body { background: #e5ddd5; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }
@@ -18,7 +13,10 @@
     /* Header Bar */
     .header { background: #075e54; color: white; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; }
     .header-info { display: flex; flex-direction: column; }
-    .user-name { font-weight: bold; font-size: 16px; }
+    .user-name { font-weight: bold; font-size: 16px; display: flex; align-items: center; gap: 6px; }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .status-online { background: #2ecc71; }
+    .status-offline { background: #95a5a6; }
     .user-id-box { font-size: 12px; opacity: 0.9; margin-top: 3px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
     .btn-copy { background: rgba(255,255,255,0.2); border: none; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; cursor: pointer; }
     .header-actions { display: flex; gap: 4px; align-items: center; }
@@ -52,16 +50,18 @@
     .msg-received { align-self: flex-start; background: white; }
     .msg-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 3px; }
     .msg-sender { font-size: 11px; font-weight: bold; color: #075e54; }
-    .btn-delete-msg { background: transparent; border: none; color: #888; cursor: pointer; font-size: 12px; padding: 0 2px; }
-    .btn-delete-msg:hover { color: #dc3545; }
+    .msg-actions { display: flex; gap: 5px; }
+    .btn-msg-action { background: transparent; border: none; color: #888; cursor: pointer; font-size: 12px; padding: 0 2px; }
+    .btn-msg-action:hover { color: #075e54; }
+    .edited-tag { font-size: 10px; opacity: 0.6; font-style: italic; margin-left: 4px; }
     
     .input-box { display: flex; padding: 10px; background: #f0f0f0; border-top: 1px solid #ccc; }
     .input-box input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 20px; outline: none; }
     .input-box button { margin-left: 8px; padding: 10px 18px; background: #128c7e; color: white; border: none; border-radius: 20px; cursor: pointer; }
     
     /* Login Screen & Blank State */
-    .login-container { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; gap: 15px; text-align: center; }
-    .btn-login { background: #4285f4; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer; }
+    .login-container { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; gap: 15px; text-align: center; padding: 20px; }
+    .btn-login { background: #4285f4; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer; font-weight: bold; }
     .empty-state { flex: 1; display: flex; justify-content: center; align-items: center; color: #888; font-size: 14px; text-align: center; padding: 20px; }
     
     .hidden { display: none !important; }
@@ -74,10 +74,9 @@
   <div class="container">
     <!-- Login Screen -->
     <div id="login-screen" class="login-container">
-      <h2>Chat App သို့ သွားနေသည်...</h2>
-      <p>အလိုအလျောက် ပွင့်မလာပါက အောက်ပါ Link ကို နှိပ်ပါ -</p>
-      <a href="https://frabjous-gecko-9baa15.netlify.app" style="color: #075e54; font-weight: bold;">Open Chat App</a>
-      <button id="login-btn" class="btn-login hidden">Sign in with Google</button>
+      <h2>Web Chat App</h2>
+      <p>စကားပြောရန် Google အကောင့်ဖြင့် ဝင်ရောက်ပါ</p>
+      <button id="login-btn" class="btn-login">Sign in with Google</button>
       <div id="status-text" class="loading"></div>
     </div>
 
@@ -87,7 +86,10 @@
       <!-- Top Navigation Header -->
       <div class="header">
         <div class="header-info">
-          <span id="user-name" class="user-name">User</span>
+          <div class="user-name">
+            <span id="status-dot" class="status-dot status-offline"></span>
+            <span id="user-name">User</span>
+          </div>
           <div class="user-id-box" id="copy-id-btn" title="Click to Copy">
             <span>ID: <strong id="user-myanmar-id">------</strong></span>
             <button class="btn-copy">Copy</button>
@@ -170,6 +172,7 @@
     const loginBtn = document.getElementById('login-btn');
     const logoutBtn = document.getElementById('logout-btn');
     const userNameSpan = document.getElementById('user-name');
+    const statusDot = document.getElementById('status-dot');
     const userMyanmarIdSpan = document.getElementById('user-myanmar-id');
     const copyIdBtn = document.getElementById('copy-id-btn');
     const chatBox = document.getElementById('chat-box');
@@ -202,6 +205,19 @@
       return result;
     }
 
+    async function setUserStatus(status) {
+      if (!currentUser) return;
+      const userRef = doc(db, "users", currentUser.uid);
+      await setDoc(userRef, {
+        status: status,
+        lastActive: serverTimestamp()
+      }, { merge: true });
+    }
+
+    window.addEventListener('beforeunload', () => {
+      setUserStatus('offline');
+    });
+
     async function setupUserProfile(user) {
       const userRef = doc(db, "users", user.uid);
       const userSnap = await getDoc(userRef);
@@ -216,10 +232,12 @@
           email: user.email,
           myanmarId: myMyanmarId,
           friends: [],
+          status: 'online',
           createdAt: serverTimestamp()
-        });
+        }, { merge: true });
       }
       userMyanmarIdSpan.textContent = myMyanmarId;
+      await setUserStatus('online');
       loadFriendsList();
     }
 
@@ -377,6 +395,7 @@
     });
 
     logoutBtn.addEventListener('click', async () => {
+      await setUserStatus('offline');
       await signOut(auth);
     });
 
@@ -384,13 +403,16 @@
       if (user) {
         currentUser = user;
         userNameSpan.textContent = user.displayName || user.email;
+        statusDot.className = "status-dot status-online";
         await setupUserProfile(user);
         loginScreen.classList.add('hidden');
         chatScreen.classList.remove('hidden');
       } else {
+        if (currentUser) setUserStatus('offline');
         currentUser = null;
         myMyanmarId = "";
         activeChatRoomId = null;
+        statusDot.className = "status-dot status-offline";
         if (unsubscribeListener) unsubscribeListener();
         loginScreen.classList.remove('hidden');
         chatScreen.classList.add('hidden');
@@ -410,6 +432,7 @@
           uid: currentUser.uid,
           displayName: currentUser.displayName || 'Anonymous',
           myanmarId: myMyanmarId,
+          edited: false,
           createdAt: serverTimestamp()
         });
       } catch (err) {
@@ -417,51 +440,27 @@
       }
     }
 
+    async function editMessage(msgId, currentText) {
+      const newText = prompt("မက်ဆေ့ဂျ် ပြင်ဆင်ရန်:", currentText);
+      if (newText !== null && newText.trim() !== "" && newText !== currentText) {
+        try {
+          await updateDoc(doc(db, `chats/${activeChatRoomId}/messages`, msgId), {
+            text: newText.trim(),
+            edited: true
+          });
+        } catch (err) {
+          alert("စာပြင်၍ မရပါ: " + err.message);
+        }
+      }
+    }
+
     async function deleteMessage(msgId) {
       if (!confirm("ဒီစာကို ဖျက်ရန် သေချာပါသလား?")) return;
       try {
-        await deleteDoc(doc(doc(db, `chats/${activeChatRoomId}/messages`, msgId)));
+        await deleteDoc(doc(db, `chats/${activeChatRoomId}/messages`, msgId));
       } catch (err) {
         alert("စာဖျက်၍ မရပါ: " + err.message);
       }
     }
 
-    sendBtn.addEventListener('click', sendMessage);
-    messageInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') sendMessage();
-    });
-
-    function loadMessages() {
-      if (unsubscribeListener) unsubscribeListener();
-      if (!activeChatRoomId) return;
-
-      const q = query(collection(db, `chats/${activeChatRoomId}/messages`), orderBy("createdAt", "asc"));
-      
-      unsubscribeListener = onSnapshot(q, (snapshot) => {
-        chatBox.innerHTML = '';
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          const msgId = docSnap.id;
-          const isMe = data.uid === currentUser?.uid;
-
-          const msgDiv = document.createElement('div');
-          msgDiv.className = `msg ${isMe ? 'msg-sent' : 'msg-received'}`;
-          
-          let deleteBtnHtml = isMe ? `<button class="btn-delete-msg" title="Delete">🗑️</button>` : '';
-
-          msgDiv.innerHTML = `
-            <div class="msg-header">
-              <span class="msg-sender">${isMe ? 'You' : data.displayName} (${data.myanmarId || 'No ID'})</span>
-              ${deleteBtnHtml}
-            </div>
-            <div>${data.text}</div>
-          `;
-
-          if (isMe) {
-            msgDiv.querySelector('.btn-delete-msg').addEventListener('click', () => {
-              deleteMessage(msgId);
-            });
-          }
-
-          chatBox.appendChild(msgDiv);
-  
+    sendBtn.addEventListener('click', sen
