@@ -11,13 +11,14 @@
     .container { width: 100%; max-width: 450px; height: 90vh; background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); display: flex; flex-direction: column; overflow: hidden; }
     
     /* Header Bar */
-    .header { background: #075e54; color: white; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; }
+    .header { background: #075e54; color: white; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; position: relative; }
     .header-info { display: flex; flex-direction: column; }
     .user-name { font-weight: bold; font-size: 16px; }
     .user-id-box { font-size: 12px; opacity: 0.9; margin-top: 3px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
     .btn-copy { background: rgba(255,255,255,0.2); border: none; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; cursor: pointer; }
     .header-actions { display: flex; gap: 4px; align-items: center; }
-    .btn-top { background: #128c7e; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; }
+    .btn-top { background: #128c7e; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; position: relative; }
+    .badge { position: absolute; top: -5px; right: -5px; background: red; color: white; border-radius: 50%; padding: 2px 5px; font-size: 9px; font-weight: bold; }
     .btn-public { background: #008cba; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; }
     .btn-logout { background: #dc3545; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; }
     
@@ -37,6 +38,7 @@
     .friend-actions { display: flex; gap: 6px; align-items: center; }
     .btn-unfriend { background: #ff4d4d; color: white; border: none; padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; }
     .btn-chat-friend { background: #128c7e; color: white; border: none; padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+    .btn-accept { background: #25D366; color: white; border: none; padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; }
     
     /* Online Status Indicator */
     .status-dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
@@ -106,7 +108,7 @@
         <div class="header-actions">
           <button id="public-room-btn" class="btn-public">🌐 Public</button>
           <button id="toggle-search-btn" class="btn-top">🔍 ရှာရန်</button>
-          <button id="toggle-friends-btn" class="btn-top">👥 သူငယ်ချင်း</button>
+          <button id="toggle-friends-btn" class="btn-top">👥 သူငယ်ချင်း <span id="req-badge" class="badge hidden">0</span></button>
           <button id="logout-btn" class="btn-logout">ထွက်</button>
         </div>
       </div>
@@ -123,6 +125,9 @@
 
       <!-- Friends List Panel -->
       <div id="friends-section" class="panel-box hidden">
+        <div class="section-title">သူငယ်ချင်းတောင်းဆိုချက်များ (Requests)</div>
+        <div id="requests-list-area" style="margin-bottom: 10px;">မရှိသေးပါ။</div>
+        <hr style="border: 0; border-top: 1px solid #ddd; margin: 8px 0;">
         <div class="section-title">ကျွန်ုပ်၏ သူငယ်ချင်းစာရင်း</div>
         <div id="friends-list-area">သူငယ်ချင်း မရှိသေးပါ။</div>
       </div>
@@ -173,6 +178,7 @@
     let myMyanmarId = "";
     let activeChatRoomId = null;
     let unsubscribeListener = null;
+    let reqUnsubscribe = null;
 
     const loginScreen = document.getElementById('login-screen');
     const chatScreen = document.getElementById('chat-screen');
@@ -195,6 +201,8 @@
     const findUserBtn = document.getElementById('find-user-btn');
     const searchResultArea = document.getElementById('search-result-area');
     const friendsListArea = document.getElementById('friends-list-area');
+    const requestsListArea = document.getElementById('requests-list-area');
+    const reqBadge = document.getElementById('req-badge');
     
     const emptyStateMsg = document.getElementById('empty-state-msg');
     const chatWrapper = document.getElementById('chat-wrapper');
@@ -232,7 +240,7 @@
         });
       }
       userMyanmarIdSpan.textContent = myMyanmarId;
-      loadFriendsList();
+      loadFriendsAndRequests();
     }
 
     window.addEventListener('beforeunload', async () => {
@@ -264,7 +272,7 @@
     toggleFriendsBtn.addEventListener('click', () => {
       friendsSection.classList.toggle('hidden');
       searchSection.classList.add('hidden');
-      loadFriendsList();
+      loadFriendsAndRequests();
     });
 
     findUserBtn.addEventListener('click', async () => {
@@ -289,21 +297,24 @@
         querySnapshot.forEach(async (docSnap) => {
           const targetUser = docSnap.data();
           
+          const reqQuery = query(collection(db, "friendRequests"), 
+            where("fromUid", "==", currentUser.uid), 
+            where("toUid", "==", targetUser.uid)
+          );
+          const reqSnap = await getDocs(reqQuery);
+
           const myRef = doc(db, "users", currentUser.uid);
           const mySnap = await getDoc(myRef);
           const myFriends = mySnap.exists() ? (mySnap.data().friends || []) : [];
           const isAlreadyFriend = myFriends.some(f => f.uid === targetUser.uid);
 
-          const targetFriends = targetUser.friends || [];
-          const isAcceptedByThem = targetFriends.some(f => f.uid === currentUser.uid);
-
           let actionButtonHTML = '';
-          if (isAcceptedByThem) {
+          if (isAlreadyFriend) {
             actionButtonHTML = `<button class="btn-request-sent" disabled>✓ သူငယ်ချင်းဖြစ်ပြီး</button>`;
-          } else if (isAlreadyFriend) {
-            actionButtonHTML = `<button class="btn-request-sent" disabled>⏳ Friend Request</button>`;
+          } else if (!reqSnap.empty) {
+            actionButtonHTML = `<button class="btn-request-sent" disabled>Friend Request</button>`;
           } else {
-            actionButtonHTML = `<button class="btn-add-friend" id="add-friend-action">👥 Add Friend</button>`;
+            actionButtonHTML = `<button class="btn-add-friend" id="add-friend-action">Add Friend</button>`;
           }
 
           const card = document.createElement('div');
@@ -320,28 +331,54 @@
           const addBtn = document.getElementById('add-friend-action');
           if (addBtn) {
             addBtn.addEventListener('click', () => {
-              addFriend(targetUser);
+              sendFriendRequest(targetUser);
             });
           }
         });
       }
     });
 
-    async function addFriend(targetUser) {
+    async function sendFriendRequest(targetUser) {
       try {
-        const userRef = doc(db, "users", currentUser.uid);
-        await updateDoc(userRef, {
-          friends: arrayUnion({
-            uid: targetUser.uid,
-            displayName: targetUser.displayName,
-            myanmarId: targetUser.myanmarId
-          })
+        await addDoc(collection(db, "friendRequests"), {
+          fromUid: currentUser.uid,
+          fromName: currentUser.displayName || 'Anonymous',
+          fromMyanmarId: myMyanmarId,
+          toUid: targetUser.uid,
+          createdAt: serverTimestamp()
         });
         alert(`${targetUser.displayName} ထံသို့ Friend Request ပို့ပြီးပါပြီ!`);
         searchSection.classList.add('hidden');
-        loadFriendsList();
       } catch (err) {
-        alert("Add Friend လုပ်၍ မရပါ: " + err.message);
+        alert("Request ပို့၍ မရပါ: " + err.message);
+      }
+    }
+
+    async function acceptFriendRequest(reqId, senderData) {
+      try {
+        const myRef = doc(db, "users", currentUser.uid);
+        await updateDoc(myRef, {
+          friends: arrayUnion({
+            uid: senderData.fromUid,
+            displayName: senderData.fromName,
+            myanmarId: senderData.fromMyanmarId
+          })
+        });
+
+        const senderRef = doc(db, "users", senderData.fromUid);
+        await updateDoc(senderRef, {
+          friends: arrayUnion({
+            uid: currentUser.uid,
+            displayName: currentUser.displayName || 'Anonymous',
+            myanmarId: myMyanmarId
+          })
+        });
+
+        await deleteDoc(doc(db, "friendRequests", reqId));
+        alert("သူငယ်ချင်း ဖြစ်သွားပါပြီ!");
+        loadFriendsAndRequests();
+      } catch (err) {
+        alert("လက်ခံ၍ မရပါ: " + err.message);
       }
     }
 
@@ -352,87 +389,123 @@
         await updateDoc(userRef, {
           friends: arrayRemove(friend)
         });
+
+        const friendRef = doc(db, "users", friend.uid);
+        await updateDoc(friendRef, {
+          friends: arrayRemove({
+            uid: currentUser.uid,
+            displayName: currentUser.displayName || 'Anonymous',
+            myanmarId: myMyanmarId
+          })
+        });
+
         alert("သူငယ်ချင်းစာရင်းမှ ဖယ်ရှားပြီးပါပြီ။");
-        loadFriendsList();
+        loadFriendsAndRequests();
       } catch (err) {
         alert("ဖယ်ရှား၍ မရပါ: " + err.message);
       }
     }
 
-    async function loadFriendsList() {
+    function loadFriendsAndRequests() {
       if (!currentUser) return;
-      const userRef = doc(db, "users", currentUser.uid);
-      const userSnap = await getDoc(userRef);
 
-      if (userSnap.exists()) {
-        const friends = userSnap.data().friends || [];
-        friendsListArea.innerHTML = '';
+      const reqQuery = query(collection(db, "friendRequests"), where("toUid", "==", currentUser.uid));
+      if (reqUnsubscribe) reqUnsubscribe();
 
-        if (friends.length === 0) {
-          friendsListArea.innerHTML = '<div style="font-size:12px; color:#666;">သူငယ်ချင်း မရှိသေးပါ။ ID ဖြင့် ရှာပြီး Add ပါ။</div>';
-          return;
+      reqUnsubscribe = onSnapshot(reqQuery, (snapshot) => {
+        requestsListArea.innerHTML = '';
+        const count = snapshot.size;
+        
+        if (count > 0) {
+          reqBadge.textContent = count;
+          reqBadge.classList.remove('hidden');
+        } else {
+          reqBadge.classList.add('hidden');
         }
 
-        friends.forEach(async (friend) => {
-          const friendRef = doc(db, "users", friend.uid);
-          const friendSnap = await getDoc(friendRef);
-          
-          let statusTextDisplay = "Offline";
-          let isOnline = false;
-          let isAccepted = false;
+        if (snapshot.empty) {
+          requestsListArea.innerHTML = '<div style="font-size:12px; color:#666;">တောင်းဆိုချက် မရှိပါ။</div>';
+        } else {
+          snapshot.forEach((docSnap) => {
+            const reqData = docSnap.data();
+            const reqId = docSnap.id;
 
-          if (friendSnap.exists()) {
-            const data = friendSnap.data();
-            isOnline = data.isOnline || false;
+            const div = document.createElement('div');
+            div.className = 'friend-item';
+            div.innerHTML = `
+              <div>
+                <strong>${reqData.fromName}</strong>က သူငယ်ချင်းဖြစ်ချင်နေသည်<br/>
+                <small style="color:#666;">ID: ${reqData.fromMyanmarId}</small>
+              </div>
+              <button class="btn-accept" id="accept-${reqId}">Accept</button>
+            `;
+            requestsListArea.appendChild(div);
 
-            const theirFriends = data.friends || [];
-            isAccepted = theirFriends.some(f => f.uid === currentUser.uid);
+            div.querySelector(`#accept-${reqId}`).addEventListener('click', () => {
+              acceptFriendRequest(reqId, reqData);
+            });
+          });
+        }
+      });
 
-            if (isAccepted) {
+      const userRef = doc(db, "users", currentUser.uid);
+      getDoc(userRef).then(async (userSnap) => {
+        if (userSnap.exists()) {
+          const friends = userSnap.data().friends || [];
+          friendsListArea.innerHTML = '';
+
+          if (friends.length === 0) {
+            friendsListArea.innerHTML = '<div style="font-size:12px; color:#666;">သူငယ်ချင်း မရှိသေးပါ။</div>';
+            return;
+          }
+
+          friends.forEach(async (friend) => {
+            const friendRef = doc(db, "users", friend.uid);
+            const friendSnap = await getDoc(friendRef);
+            
+            let statusTextDisplay = "Offline";
+            let isOnline = false;
+
+            if (friendSnap.exists()) {
+              const data = friendSnap.data();
+              isOnline = data.isOnline || false;
               if (isOnline) {
                 statusTextDisplay = "Online";
               } else if (data.lastSeen && typeof data.lastSeen.toDate === 'function') {
                 const dateObj = data.lastSeen.toDate();
-                const timeString = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                const dateString = dateObj.toLocaleDateString();
-                statusTextDisplay = `Last seen: ${dateString} ${timeString}`;
+                statusTextDisplay = `Last seen: ${dateObj.toLocaleDateString()} ${dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` ;
               }
-            } else {
-              statusTextDisplay = "⏳ Friend Request (လက်ခံရသေးသည်)";
             }
-          }
 
-          const item = document.createElement('div');
-          item.className = 'friend-item';
-          item.innerHTML = `
-            <div class="friend-info-area">
-              <span class="status-dot ${isAccepted && isOnline ? 'status-online' : 'status-offline'}"></span>
-              <strong>${friend.displayName}</strong><br/>
-              <small style="color:#666; margin-left: 15px;">${statusTextDisplay}</small>
-            </div>
-            <div class="friend-actions">
-              ${isAccepted ? '<button class="btn-chat-friend">💬 Chat</button>' : ''}
-              <button class="btn-unfriend">Unfriend</button>
-            </div>
-          `;
+            const item = document.createElement('div');
+            item.className = 'friend-item';
+            item.innerHTML = `
+              <div class="friend-info-area">
+                <span class="status-dot ${isOnline ? 'status-online' : 'status-offline'}"></span>
+                <strong>${friend.displayName}</strong><br/>
+                <small style="color:#666; margin-left: 15px;">${statusTextDisplay}</small>
+              </div>
+              <div class="friend-actions">
+                <button class="btn-chat-friend">💬 Chat</button>
+                <button class="btn-unfriend">Unfriend</button>
+              </div>
+            `;
 
-          if (isAccepted) {
             item.querySelector('.friend-info-area').addEventListener('click', () => {
               startPrivateChat(friend);
             });
             item.querySelector('.btn-chat-friend').addEventListener('click', () => {
               startPrivateChat(friend);
             });
-          }
+            item.querySelector('.btn-unfriend').addEventListener('click', (e) => {
+              e.stopPropagation();
+              removeFriend(friend);
+            });
 
-          item.querySelector('.btn-unfriend').addEventListener('click', (e) => {
-            e.stopPropagation();
-            removeFriend(friend);
+            friendsListArea.appendChild(item);
           });
-
-          friendsListArea.appendChild(item);
-        });
-      }
+        }
+      });
     }
 
     function startPrivateChat(targetUser) {
@@ -493,6 +566,7 @@
         myMyanmarId = "";
         activeChatRoomId = null;
         if (unsubscribeListener) unsubscribeListener();
+        if (reqUnsubscribe) reqUnsubscribe();
         loginScreen.classList.remove('hidden');
         chatScreen.classList.add('hidden');
         chatWrapper.classList.add('hidden');
@@ -503,6 +577,25 @@
     async function sendMessage() {
       const text = messageInput.value.trim();
       if (!text || !currentUser || !activeChatRoomId) return;
+
+      if (activeChatRoomId.startsWith("direct_")) {
+        const parts = activeChatRoomId.split("_");
+        const targetUid = parts[1] === currentUser.uid ? parts[2] : parts[1];
+
+        const userRef = doc(db, "users", currentUser.uid);
+        const userSnap = await getDoc(userRef);
+        const friends = userSnap.exists() ? (userSnap.data().friends || []) : [];
+        const isFriend = friends.some(f => f.uid === targetUid);
+
+        if (!isFriend) {
+          const qMsgs = query(collection(db, `chats/${activeChatRoomId}/messages`), where("uid", "==", currentUser.uid));
+          const msgsSnap = await getDocs(qMsgs);
+          if (msgsSnap.size >= 3) {
+            alert("⚠️ သူငယ်ချင်း မဖြစ်သေးပါက စာ ၃ ကြောင်းထက်ပို၍ ပို့၍မရပါ။ သူငယ်ချင်းတောင်းဆိုမှု လက်ခံခိုင်းပါ သို့မဟုတ် လက်ခံပါ။");
+            return;
+          }
+        }
+      }
 
       messageInput.value = '';
       try {
@@ -610,4 +703,5 @@
     });
   </script>
 </body>
-  </html>
+</html>
+  
