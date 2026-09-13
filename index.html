@@ -29,6 +29,7 @@
     
     .result-card { background: white; padding: 8px 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #ddd; margin-top: 5px; }
     .btn-add-friend { background: #25D366; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; }
+    .btn-request-sent { background: #f0ad4e; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: default; font-size: 12px; font-weight: bold; }
     
     .friend-item { background: white; padding: 8px 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; border: 1px solid #ddd; }
     .friend-info-area { flex: 1; cursor: pointer; }
@@ -114,7 +115,6 @@
       <div id="search-section" class="panel-box hidden">
         <div class="section-title">သူငယ်ချင်း ID ဖြင့် ရှာရန်</div>
         <div class="search-input-group">
-          <!-- autocomplete="off" ထည့်သွင်းထားပါသည် -->
           <input type="text" id="search-id-input" placeholder="မြန်မာ ID ရိုက်ပါ..." autocomplete="off" />
           <button id="find-user-btn">ရှာပါ</button>
         </div>
@@ -149,8 +149,7 @@
 
     </div>
   </div>
-
-  <script type="module">
+    <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, collection, addDoc, deleteDoc, query, where, getDocs, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
@@ -287,9 +286,26 @@
       if (querySnapshot.empty) {
         searchResultArea.innerHTML = `<div style="color:red; font-size:12px;">ဒီ ID နဲ့ User ရှာမတွေ့ပါ။</div>`;
       } else {
-        querySnapshot.forEach((docSnap) => {
+        querySnapshot.forEach(async (docSnap) => {
           const targetUser = docSnap.data();
           
+          const myRef = doc(db, "users", currentUser.uid);
+          const mySnap = await getDoc(myRef);
+          const myFriends = mySnap.exists() ? (mySnap.data().friends || []) : [];
+          const isAlreadyFriend = myFriends.some(f => f.uid === targetUser.uid);
+
+          const targetFriends = targetUser.friends || [];
+          const isAcceptedByThem = targetFriends.some(f => f.uid === currentUser.uid);
+
+          let actionButtonHTML = '';
+          if (isAcceptedByThem) {
+            actionButtonHTML = `<button class="btn-request-sent" disabled>✓ သူငယ်ချင်းဖြစ်ပြီး</button>`;
+          } else if (isAlreadyFriend) {
+            actionButtonHTML = `<button class="btn-request-sent" disabled>⏳ Friend Request</button>`;
+          } else {
+            actionButtonHTML = `<button class="btn-add-friend" id="add-friend-action">👥 Add Friend</button>`;
+          }
+
           const card = document.createElement('div');
           card.className = 'result-card';
           card.innerHTML = `
@@ -297,13 +313,16 @@
               <strong>${targetUser.displayName}</strong><br/>
               <small style="color:#666;">ID: ${targetUser.myanmarId}</small>
             </div>
-            <button class="btn-add-friend" id="add-friend-action">👥 Add Friend</button>
+            ${actionButtonHTML}
           `;
           searchResultArea.appendChild(card);
 
-          document.getElementById('add-friend-action').addEventListener('click', () => {
-            addFriend(targetUser);
-          });
+          const addBtn = document.getElementById('add-friend-action');
+          if (addBtn) {
+            addBtn.addEventListener('click', () => {
+              addFriend(targetUser);
+            });
+          }
         });
       }
     });
@@ -318,7 +337,7 @@
             myanmarId: targetUser.myanmarId
           })
         });
-        alert(`${targetUser.displayName} ကို သူငယ်ချင်းအဖြစ် အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ!`);
+        alert(`${targetUser.displayName} ထံသို့ Friend Request ပို့ပြီးပါပြီ!`);
         searchSection.classList.add('hidden');
         loadFriendsList();
       } catch (err) {
@@ -360,18 +379,26 @@
           
           let statusTextDisplay = "Offline";
           let isOnline = false;
+          let isAccepted = false;
 
           if (friendSnap.exists()) {
             const data = friendSnap.data();
             isOnline = data.isOnline || false;
 
-            if (isOnline) {
-              statusTextDisplay = "Online";
-            } else if (data.lastSeen && typeof data.lastSeen.toDate === 'function') {
-              const dateObj = data.lastSeen.toDate();
-              const timeString = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-              const dateString = dateObj.toLocaleDateString();
-              statusTextDisplay = `Last seen: ${dateString} ${timeString}`;
+            const theirFriends = data.friends || [];
+            isAccepted = theirFriends.some(f => f.uid === currentUser.uid);
+
+            if (isAccepted) {
+              if (isOnline) {
+                statusTextDisplay = "Online";
+              } else if (data.lastSeen && typeof data.lastSeen.toDate === 'function') {
+                const dateObj = data.lastSeen.toDate();
+                const timeString = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                const dateString = dateObj.toLocaleDateString();
+                statusTextDisplay = `Last seen: ${dateString} ${timeString}`;
+              }
+            } else {
+              statusTextDisplay = "⏳ Friend Request (လက်ခံရသေးသည်)";
             }
           }
 
@@ -379,22 +406,24 @@
           item.className = 'friend-item';
           item.innerHTML = `
             <div class="friend-info-area">
-              <span class="status-dot ${isOnline ? 'status-online' : 'status-offline'}"></span>
+              <span class="status-dot ${isAccepted && isOnline ? 'status-online' : 'status-offline'}"></span>
               <strong>${friend.displayName}</strong><br/>
               <small style="color:#666; margin-left: 15px;">${statusTextDisplay}</small>
             </div>
             <div class="friend-actions">
-              <button class="btn-chat-friend">💬 Chat</button>
+              ${isAccepted ? '<button class="btn-chat-friend">💬 Chat</button>' : ''}
               <button class="btn-unfriend">Unfriend</button>
             </div>
           `;
 
-          item.querySelector('.friend-info-area').addEventListener('click', () => {
-            startPrivateChat(friend);
-          });
-          item.querySelector('.btn-chat-friend').addEventListener('click', () => {
-            startPrivateChat(friend);
-          });
+          if (isAccepted) {
+            item.querySelector('.friend-info-area').addEventListener('click', () => {
+              startPrivateChat(friend);
+            });
+            item.querySelector('.btn-chat-friend').addEventListener('click', () => {
+              startPrivateChat(friend);
+            });
+          }
 
           item.querySelector('.btn-unfriend').addEventListener('click', (e) => {
             e.stopPropagation();
@@ -581,4 +610,4 @@
     });
   </script>
 </body>
-</html>
+  </html>
