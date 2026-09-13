@@ -22,13 +22,16 @@
     .btn-logout { background: #dc3545; color: white; border: none; padding: 6px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; }
     
     /* Search & Friends Panel */
-    .panel-box { background: #f0f0f0; padding: 10px 15px; border-bottom: 1px solid #ccc; max-height: 250px; overflow-y: auto; }
+    .panel-box { background: #f0f0f0; padding: 10px 15px; border-bottom: 1px solid #ccc; max-height: 300px; overflow-y: auto; }
     .search-input-group { display: flex; gap: 8px; margin-bottom: 8px; }
     .panel-box input { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 6px; outline: none; }
     .panel-box button { padding: 8px 12px; background: #075e54; color: white; border: none; border-radius: 6px; cursor: pointer; }
     
     .result-card { background: white; padding: 8px 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #ddd; margin-top: 5px; }
     .btn-add-friend { background: #25D366; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; }
+    .btn-accept { background: #28a745; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+    .btn-reject { background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+    
     .friend-item { background: white; padding: 8px 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; cursor: pointer; border: 1px solid #ddd; }
     .friend-item:hover { background: #f9f9f9; }
 
@@ -61,7 +64,7 @@
     
     .hidden { display: none !important; }
     .loading { font-size: 14px; color: #666; }
-    .section-title { font-size: 12px; font-weight: bold; color: #444; margin: 5px 0; }
+    .section-title { font-size: 12px; font-weight: bold; color: #444; margin: 8px 0 4px 0; border-bottom: 1px solid #ddd; padding-bottom: 3px; }
   </style>
 </head>
 <body>
@@ -106,7 +109,10 @@
 
       <!-- Friends List Panel -->
       <div id="friends-section" class="panel-box hidden">
-        <div class="section-title">ကျွန်ုပ်၏ သူငယ်ချင်းစာရင်း</div>
+        <div class="section-title" style="color: #d9534f;">📥 လက်ခံရန်ရှိသော တောင်းဆိုချက်များ</div>
+        <div id="pending-requests-area">မရှိသေးပါ။</div>
+
+        <div class="section-title">👥 ကျွန်ုပ်၏ သူငယ်ချင်းစာရင်း</div>
         <div id="friends-list-area">သူငယ်ချင်း မရှိသေးပါ။</div>
       </div>
 
@@ -136,7 +142,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, collection, addDoc, deleteDoc, query, where, getDocs, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, collection, addDoc, deleteDoc, query, where, getDocs, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyD8PiDczKyJPrQdwyB2EmjlUdFOnr6ACVc",
@@ -179,6 +185,7 @@
     const findUserBtn = document.getElementById('find-user-btn');
     const searchResultArea = document.getElementById('search-result-area');
     const friendsListArea = document.getElementById('friends-list-area');
+    const pendingRequestsArea = document.getElementById('pending-requests-area');
     
     const emptyStateMsg = document.getElementById('empty-state-msg');
     const chatWrapper = document.getElementById('chat-wrapper');
@@ -209,11 +216,12 @@
           email: user.email,
           myanmarId: myMyanmarId,
           friends: [],
+          pendingRequests: [],
           createdAt: serverTimestamp()
         });
       }
       userMyanmarIdSpan.textContent = myMyanmarId;
-      loadFriendsList();
+      loadFriendsAndRequests();
     }
 
     publicRoomBtn.addEventListener('click', () => {
@@ -238,7 +246,7 @@
     toggleFriendsBtn.addEventListener('click', () => {
       friendsSection.classList.toggle('hidden');
       searchSection.classList.add('hidden');
-      loadFriendsList();
+      loadFriendsAndRequests();
     });
 
     findUserBtn.addEventListener('click', async () => {
@@ -270,44 +278,93 @@
               <strong>${targetUser.displayName}</strong><br/>
               <small style="color:#666;">ID: ${targetUser.myanmarId}</small>
             </div>
-            <button class="btn-add-friend" id="add-friend-action">👥 Add Friend</button>
+            <button class="btn-add-friend" id="send-req-btn">➕ Request ပို့မည်</button>
           `;
           searchResultArea.appendChild(card);
 
-          document.getElementById('add-friend-action').addEventListener('click', () => {
-            addFriend(targetUser);
+          document.getElementById('send-req-btn').addEventListener('click', () => {
+            sendFriendRequest(targetUser);
           });
         });
       }
     });
 
-    async function addFriend(targetUser) {
+    // သူငယ်ချင်း တောင်းဆိုချက် ပို့ခြင်း
+    async function sendFriendRequest(targetUser) {
       try {
-        const userRef = doc(db, "users", currentUser.uid);
-        await updateDoc(userRef, {
-          friends: arrayUnion({
-            uid: targetUser.uid,
-            displayName: targetUser.displayName,
-            myanmarId: targetUser.myanmarId
-          })
-        });
-        alert(`${targetUser.displayName} ကို သူငယ်ချင်းအဖြစ် အောင်မြင်စွာ ထည့်သွင်းပြီးပါပြီ!`);
-        searchSection.classList.add('hidden');
-        loadFriendsList();
+        const targetRef = doc(db, "users", targetUser.uid);
+        const targetSnap = await getDoc(targetRef);
+        
+        if (targetSnap.exists()) {
+          const data = targetSnap.data();
+          const friends = data.friends || [];
+          const pending = data.pendingRequests || [];
+
+          // အရင်ကတည်းက သူငယ်ချင်းဖြစ်ပြီးသားလား စစ်ဆေးရန်
+          if (friends.some(f => f.uid === currentUser.uid)) {
+            alert("ဒီသူနဲ့က သူငယ်ချင်းဖြစ်ပြီးသားပါ။");
+            return;
+          }
+          // Request ပို့ပြီးသားလား စစ်ဆေးရန်
+          if (pending.some(p => p.uid === currentUser.uid)) {
+            alert("ဒီသူဆီကို Request ပို့ပြီးသား ဖြစ်ပါတယ်။");
+            return;
+          }
+
+          await updateDoc(targetRef, {
+            pendingRequests: arrayUnion({
+              uid: currentUser.uid,
+              displayName: currentUser.displayName || 'Anonymous',
+              myanmarId: myMyanmarId
+            })
+          });
+          alert(`${targetUser.displayName} ထံသို့ သူငယ်ချင်း တောင်းဆိုချက် (Request) ပို့ပြီးပါပြီ!`);
+          searchSection.classList.add('hidden');
+        }
       } catch (err) {
-        alert("Add Friend လုပ်၍ မရပါ: " + err.message);
+        alert("Request ပို့၍ မရပါ: " + err.message);
       }
     }
 
-    async function loadFriendsList() {
+    // သူငယ်ချင်းနှင့် Request များကို Load လုပ်ရန်
+    async function loadFriendsAndRequests() {
       if (!currentUser) return;
       const userRef = doc(db, "users", currentUser.uid);
       const userSnap = await getDoc(userRef);
 
       if (userSnap.exists()) {
-        const friends = userSnap.data().friends || [];
-        friendsListArea.innerHTML = '';
+        const userData = userSnap.data();
+        const friends = userData.friends || [];
+        const pendingRequests = userData.pendingRequests || [];
 
+        // 1. Pending Requests များကို ပြရန်
+        pendingRequestsArea.innerHTML = '';
+        if (pendingRequests.length === 0) {
+          pendingRequestsArea.innerHTML = '<div style="font-size:12px; color:#666; margin-bottom:8px;">မရှိသေးပါ။</div>';
+        } else {
+          pendingRequests.forEach(req => {
+            const item = document.createElement('div');
+            item.className = 'result-card';
+            item.innerHTML = `
+              <div>
+                <strong>${req.displayName}</strong><br/>
+                <small style="color:#666;">ID: ${req.myanmarId}</small>
+              </div>
+              <div style="display:flex; gap:4px;">
+                <button class="btn-accept" data-uid="${req.uid}">လက်ခံမည်</button>
+                <button class="btn-reject" data-uid="${req.uid}">ငြင်းပယ်</button>
+              </div>
+            `;
+            
+            item.querySelector('.btn-accept').addEventListener('click', () => acceptRequest(req));
+            item.querySelector('.btn-reject').addEventListener('click', () => rejectRequest(req));
+            
+            pendingRequestsArea.appendChild(item);
+          });
+        }
+
+        // 2. Friends List များကို ပြရန်
+        friendsListArea.innerHTML = '';
         if (friends.length === 0) {
           friendsListArea.innerHTML = '<div style="font-size:12px; color:#666;">သူငယ်ချင်း မရှိသေးပါ။ ID ဖြင့် ရှာပြီး Add ပါ။</div>';
           return;
@@ -331,6 +388,52 @@
       }
     }
 
+    // Request ကို လက်ခံခြင်း (Accept)
+    async function acceptRequest(reqUser) {
+      try {
+        const myRef = doc(db, "users", currentUser.uid);
+        const senderRef = doc(db, "users", reqUser.uid);
+
+        // ကိုယ့်ရဲ့ friends စာရင်းထဲထည့်၊ pendingRequests ထဲက ဖယ်
+        await updateDoc(myRef, {
+          friends: arrayUnion({
+            uid: reqUser.uid,
+            displayName: reqUser.displayName,
+            myanmarId: reqUser.myanmarId
+          }),
+          pendingRequests: arrayRemove(reqUser)
+        });
+
+        // သူတို့ရဲ့ friends စာရင်းထဲမှာလည်း ကိုယ့်ကိုထည့်ပေးရန်
+        await updateDoc(senderRef, {
+          friends: arrayUnion({
+            uid: currentUser.uid,
+            displayName: currentUser.displayName || 'Anonymous',
+            myanmarId: myMyanmarId
+          })
+        });
+
+        alert(`${reqUser.displayName} နှင့် သူငယ်ချင်း ဖြစ်သွားပါပြီ!`);
+        loadFriendsAndRequests();
+      } catch (err) {
+        alert("လက်ခံ၍ မရပါ: " + err.message);
+      }
+    }
+
+    // Request ကို ငြင်းပယ်ခြင်း (Reject)
+    async function rejectRequest(reqUser) {
+      try {
+        const myRef = doc(db, "users", currentUser.uid);
+        await updateDoc(myRef, {
+          pendingRequests: arrayRemove(reqUser)
+        });
+        alert("တောင်းဆိုချက်ကို ငြင်းပယ်လိုက်ပါပြီ။");
+        loadFriendsAndRequests();
+      } catch (err) {
+        alert("လုပ်ဆောင်၍ မရပါ: " + err.message);
+      }
+    }
+
     function startPrivateChat(targetUser) {
       const roomIds = [currentUser.uid, targetUser.uid].sort();
       activeChatRoomId = `direct_${roomIds[0]}_${roomIds[1]}`;
@@ -340,128 +443,4 @@
       
       friendsSection.classList.add('hidden');
       searchSection.classList.add('hidden');
-      emptyStateMsg.classList.add('hidden');
-      chatWrapper.classList.remove('hidden');
-
-      loadMessages();
-    }
-
-    closeChatBtn.addEventListener('click', () => {
-      activeChatRoomId = null;
-      if (unsubscribeListener) unsubscribeListener();
-      chatWrapper.classList.add('hidden');
-      emptyStateMsg.classList.remove('hidden');
-    });
-
-    copyIdBtn.addEventListener('click', () => {
-      if (!myMyanmarId) return;
-      navigator.clipboard.writeText(myMyanmarId).then(() => {
-        alert("မြန်မာ ID (" + myMyanmarId + ") ကို Copy ကူးပြီးပါပြီ။");
-      });
-    });
-
-    loginBtn.addEventListener('click', async () => {
-      statusText.textContent = "Google သို့ ချိတ်ဆက်နေသည်...";
-      try {
-        await signInWithPopup(auth, provider);
-      } catch (error) {
-        statusText.textContent = "Error: " + error.message;
-      }
-    });
-
-    logoutBtn.addEventListener('click', async () => {
-      await signOut(auth);
-    });
-
-    onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        currentUser = user;
-        userNameSpan.textContent = user.displayName || user.email;
-        await setupUserProfile(user);
-        loginScreen.classList.add('hidden');
-        chatScreen.classList.remove('hidden');
-      } else {
-        currentUser = null;
-        myMyanmarId = "";
-        activeChatRoomId = null;
-        if (unsubscribeListener) unsubscribeListener();
-        loginScreen.classList.remove('hidden');
-        chatScreen.classList.add('hidden');
-        chatWrapper.classList.add('hidden');
-        emptyStateMsg.classList.remove('hidden');
-      }
-    });
-
-    async function sendMessage() {
-      const text = messageInput.value.trim();
-      if (!text || !currentUser || !activeChatRoomId) return;
-
-      messageInput.value = '';
-      try {
-        await addDoc(collection(db, `chats/${activeChatRoomId}/messages`), {
-          text: text,
-          uid: currentUser.uid,
-          displayName: currentUser.displayName || 'Anonymous',
-          myanmarId: myMyanmarId,
-          createdAt: serverTimestamp()
-        });
-      } catch (err) {
-        alert("Message ပို့မရပါ: " + err.message);
-      }
-    }
-
-    async function deleteMessage(msgId) {
-      if (!confirm("ဒီစာကို ဖျက်ရန် သေချာပါသလား?")) return;
-      try {
-        await deleteDoc(doc(db, `chats/${activeChatRoomId}/messages`, msgId));
-      } catch (err) {
-        alert("စာဖျက်၍ မရပါ: " + err.message);
-      }
-    }
-
-    sendBtn.addEventListener('click', sendMessage);
-    messageInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') sendMessage();
-    });
-
-    function loadMessages() {
-      if (unsubscribeListener) unsubscribeListener();
-      if (!activeChatRoomId) return;
-
-      const q = query(collection(db, `chats/${activeChatRoomId}/messages`), orderBy("createdAt", "asc"));
-      
-      unsubscribeListener = onSnapshot(q, (snapshot) => {
-        chatBox.innerHTML = '';
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          const msgId = docSnap.id;
-          const isMe = data.uid === currentUser?.uid;
-
-          const msgDiv = document.createElement('div');
-          msgDiv.className = `msg ${isMe ? 'msg-sent' : 'msg-received'}`;
-          
-          let deleteBtnHtml = isMe ? `<button class="btn-delete-msg" title="Delete">🗑️</button>` : '';
-
-          msgDiv.innerHTML = `
-            <div class="msg-header">
-              <span class="msg-sender">${isMe ? 'You' : data.displayName} (${data.myanmarId || 'No ID'})</span>
-              ${deleteBtnHtml}
-            </div>
-            <div>${data.text}</div>
-          `;
-
-          if (isMe) {
-            msgDiv.querySelector('.btn-delete-msg').addEventListener('click', () => {
-              deleteMessage(msgId);
-            });
-          }
-
-          chatBox.appendChild(msgDiv);
-        });
-        chatBox.scrollTop = chatBox.scrollHeight;
-      });
-    }
-  </script>
-</body>
-                                                         </html>
-                                                         
+      emptyStateMsg.cl
