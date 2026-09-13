@@ -29,8 +29,14 @@
     
     .result-card { background: white; padding: 8px 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #ddd; margin-top: 5px; }
     .btn-add-friend { background: #25D366; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; }
+    
     .friend-item { background: white; padding: 8px 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; cursor: pointer; border: 1px solid #ddd; }
     .friend-item:hover { background: #f9f9f9; }
+    
+    /* Online Status Indicator */
+    .status-dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+    .status-online { background-color: #25D366; }
+    .status-offline { background-color: #ccc; }
 
     /* Chat Target Status Bar */
     .chat-header-bar { background: #128c7e; color: white; padding: 10px 15px; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
@@ -42,13 +48,18 @@
     .chat-box { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
     
     /* Message Box Style */
-    .msg { max-width: 75%; padding: 8px 12px; border-radius: 8px; font-size: 14px; word-wrap: break-word; position: relative; }
+    .msg { max-width: 75%; padding: 8px 12px; border-radius: 8px; font-size: 14px; word-wrap: break-word; position: relative; cursor: pointer; }
     .msg-sent { align-self: flex-end; background: #dcf8c6; }
     .msg-received { align-self: flex-start; background: white; }
     .msg-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 3px; }
     .msg-sender { font-size: 11px; font-weight: bold; color: #075e54; }
-    .btn-delete-msg { background: transparent; border: none; color: #888; cursor: pointer; font-size: 12px; padding: 0 2px; }
-    .btn-delete-msg:hover { color: #dc3545; }
+    .edited-tag { font-size: 10px; color: gray; margin-left: 5px; font-style: italic; }
+
+    /* Message Action Menu Popup */
+    .msg-menu { position: absolute; right: 10px; top: 5px; background: white; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); display: flex; gap: 5px; padding: 2px; z-index: 10; }
+    .msg-menu button { background: #f0f0f0; border: none; padding: 3px 6px; font-size: 11px; cursor: pointer; border-radius: 3px; }
+    .msg-menu button:hover { background: #ddd; }
+    .msg-menu button.delete-opt { color: #dc3545; }
     
     .input-box { display: flex; padding: 10px; background: #f0f0f0; border-top: 1px solid #ccc; }
     .input-box input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 20px; outline: none; }
@@ -107,7 +118,7 @@
 
       <!-- Friends List Panel -->
       <div id="friends-section" class="panel-box hidden">
-        <div class="section-title">ကျွန်ုပ်၏ သူငယ်ချင်းစာရင်း</div>
+        <div class="section-title">ကျွန်ုပ်၏ သူငယ်ချင်းစာရင်း (Online Status ပါ)</div>
         <div id="friends-list-area">သူငယ်ချင်း မရှိသေးပါ။</div>
       </div>
 
@@ -202,6 +213,8 @@
 
       if (userSnap.exists()) {
         myMyanmarId = userSnap.data().myanmarId;
+        // Update status to online
+        await updateDoc(userRef, { isOnline: true, lastSeen: serverTimestamp() });
       } else {
         myMyanmarId = generateMyanmarId();
         await setDoc(userRef, {
@@ -210,12 +223,22 @@
           email: user.email,
           myanmarId: myMyanmarId,
           friends: [],
+          isOnline: true,
+          lastSeen: serverTimestamp(),
           createdAt: serverTimestamp()
         });
       }
       userMyanmarIdSpan.textContent = myMyanmarId;
       loadFriendsList();
     }
+
+    // Handle user offline status when closing window/tab
+    window.addEventListener('beforeunload', async () => {
+      if (currentUser) {
+        const userRef = doc(db, "users", currentUser.uid);
+        await updateDoc(userRef, { isOnline: false, lastSeen: serverTimestamp() });
+      }
+    });
 
     publicRoomBtn.addEventListener('click', () => {
       activeChatRoomId = "public_room_global";
@@ -314,13 +337,22 @@
           return;
         }
 
-        friends.forEach(friend => {
+        friends.forEach(async (friend) => {
+          // Fetch real-time online status of friend from database
+          const friendRef = doc(db, "users", friend.uid);
+          const friendSnap = await getDoc(friendRef);
+          let isOnline = false;
+          if (friendSnap.exists()) {
+            isOnline = friendSnap.data().isOnline || false;
+          }
+
           const item = document.createElement('div');
           item.className = 'friend-item';
           item.innerHTML = `
             <div>
-              <strong>${friend.displayName}</strong><br/>
-              <small style="color:#666;">ID: ${friend.myanmarId}</small>
+              <span class="status-dot ${isOnline ? 'status-online' : 'status-offline'}"></span>
+              <strong>${friend.displayName}</strong> <small>(${isOnline ? 'Online' : 'Offline'})</small><br/>
+              <small style="color:#666; margin-left: 15px;">ID: ${friend.myanmarId}</small>
             </div>
             <span style="font-size:12px; color:#128c7e; font-weight:bold;">စကားပြောမည် 💬</span>
           `;
@@ -371,6 +403,10 @@
     });
 
     logoutBtn.addEventListener('click', async () => {
+      if (currentUser) {
+        const userRef = doc(db, "users", currentUser.uid);
+        await updateDoc(userRef, { isOnline: false });
+      }
       await signOut(auth);
     });
 
@@ -404,7 +440,8 @@
           uid: currentUser.uid,
           displayName: currentUser.displayName || 'Anonymous',
           myanmarId: myMyanmarId,
-          createdAt: serverTimestamp()
+          createdAt: serverTimestamp(),
+          isEdited: false
         });
       } catch (err) {
         alert("Message ပို့မရပါ: " + err.message);
@@ -417,6 +454,21 @@
         await deleteDoc(doc(db, `chats/${activeChatRoomId}/messages`, msgId));
       } catch (err) {
         alert("စာဖျက်၍ မရပါ: " + err.message);
+      }
+    }
+
+    async function editMessage(msgId, oldText) {
+      const newText = prompt("စာကို ပြင်ရန် ရိုက်ထည့်ပါ -", oldText);
+      if (newText === null || newText.trim() === "" || newText === oldText) return;
+
+      try {
+        const msgRef = doc(db, `chats/${activeChatRoomId}/messages`, msgId);
+        await updateDoc(msgRef, {
+          text: newText.trim(),
+          isEdited: true
+        });
+      } catch (err) {
+        alert("စာပြင်၍ မရပါ: " + err.message);
       }
     }
 
@@ -441,19 +493,40 @@
           const msgDiv = document.createElement('div');
           msgDiv.className = `msg ${isMe ? 'msg-sent' : 'msg-received'}`;
           
-          let deleteBtnHtml = isMe ? `<button class="btn-delete-msg" title="Delete">🗑️</button>` : '';
+          let editedLabel = data.isEdited ? `<span class="edited-tag">(ပြင်ပြီး)</span>` : '';
 
           msgDiv.innerHTML = `
             <div class="msg-header">
               <span class="msg-sender">${isMe ? 'You' : data.displayName} (${data.myanmarId || 'No ID'})</span>
-              ${deleteBtnHtml}
             </div>
-            <div>${data.text}</div>
+            <div class="msg-content-text">${data.text} ${editedLabel}</div>
           `;
 
+          // မိမိပို့ထားသော စာများကို နှိပ်လိုက်ပါက Edit / Delete Menu ပေါ်လာစေရန်
           if (isMe) {
-            msgDiv.querySelector('.btn-delete-msg').addEventListener('click', () => {
-              deleteMessage(msgId);
+            msgDiv.addEventListener('click', (e) => {
+              e.stopPropagation();
+              // Remove existing menus first
+              document.querySelectorAll('.msg-menu').forEach(m => m.remove());
+
+              const menu = document.createElement('div');
+              menu.className = 'msg-menu';
+              menu.innerHTML = `
+                <button class="edit-opt">✏️ ပြင်ရန်</button>
+                <button class="delete-opt">🗑️ ဖျက်ရန်</button>
+              `;
+
+              menu.querySelector('.edit-opt').addEventListener('click', () => {
+                menu.remove();
+                editMessage(msgId, data.text);
+              });
+
+              menu.querySelector('.delete-opt').addEventListener('click', () => {
+                menu.remove();
+                deleteMessage(msgId);
+              });
+
+              msgDiv.appendChild(menu);
             });
           }
 
@@ -462,6 +535,11 @@
         chatBox.scrollTop = chatBox.scrollHeight;
       });
     }
+
+    // Window ပေါ်ကို တခြားနေရာ နှိပ်လိုက်ရင် Menu ပျောက်သွားအောင်
+    window.addEventListener('click', () => {
+      document.querySelectorAll('.msg-menu').forEach(m => m.remove());
+    });
   </script>
 </body>
 </html>
