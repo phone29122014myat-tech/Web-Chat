@@ -289,7 +289,6 @@
       }
     });
 
-    // သူငယ်ချင်း တောင်းဆိုချက် ပို့ခြင်း
     async function sendFriendRequest(targetUser) {
       try {
         const targetRef = doc(db, "users", targetUser.uid);
@@ -300,12 +299,10 @@
           const friends = data.friends || [];
           const pending = data.pendingRequests || [];
 
-          // အရင်ကတည်းက သူငယ်ချင်းဖြစ်ပြီးသားလား စစ်ဆေးရန်
           if (friends.some(f => f.uid === currentUser.uid)) {
             alert("ဒီသူနဲ့က သူငယ်ချင်းဖြစ်ပြီးသားပါ။");
             return;
           }
-          // Request ပို့ပြီးသားလား စစ်ဆေးရန်
           if (pending.some(p => p.uid === currentUser.uid)) {
             alert("ဒီသူဆီကို Request ပို့ပြီးသား ဖြစ်ပါတယ်။");
             return;
@@ -326,7 +323,6 @@
       }
     }
 
-    // သူငယ်ချင်းနှင့် Request များကို Load လုပ်ရန်
     async function loadFriendsAndRequests() {
       if (!currentUser) return;
       const userRef = doc(db, "users", currentUser.uid);
@@ -337,7 +333,6 @@
         const friends = userData.friends || [];
         const pendingRequests = userData.pendingRequests || [];
 
-        // 1. Pending Requests များကို ပြရန်
         pendingRequestsArea.innerHTML = '';
         if (pendingRequests.length === 0) {
           pendingRequestsArea.innerHTML = '<div style="font-size:12px; color:#666; margin-bottom:8px;">မရှိသေးပါ။</div>';
@@ -351,8 +346,8 @@
                 <small style="color:#666;">ID: ${req.myanmarId}</small>
               </div>
               <div style="display:flex; gap:4px;">
-                <button class="btn-accept" data-uid="${req.uid}">လက်ခံမည်</button>
-                <button class="btn-reject" data-uid="${req.uid}">ငြင်းပယ်</button>
+                <button class="btn-accept">လက်ခံမည်</button>
+                <button class="btn-reject">ငြင်းပယ်</button>
               </div>
             `;
             
@@ -363,7 +358,6 @@
           });
         }
 
-        // 2. Friends List များကို ပြရန်
         friendsListArea.innerHTML = '';
         if (friends.length === 0) {
           friendsListArea.innerHTML = '<div style="font-size:12px; color:#666;">သူငယ်ချင်း မရှိသေးပါ။ ID ဖြင့် ရှာပြီး Add ပါ။</div>';
@@ -388,13 +382,11 @@
       }
     }
 
-    // Request ကို လက်ခံခြင်း (Accept)
     async function acceptRequest(reqUser) {
       try {
         const myRef = doc(db, "users", currentUser.uid);
         const senderRef = doc(db, "users", reqUser.uid);
 
-        // ကိုယ့်ရဲ့ friends စာရင်းထဲထည့်၊ pendingRequests ထဲက ဖယ်
         await updateDoc(myRef, {
           friends: arrayUnion({
             uid: reqUser.uid,
@@ -404,7 +396,6 @@
           pendingRequests: arrayRemove(reqUser)
         });
 
-        // သူတို့ရဲ့ friends စာရင်းထဲမှာလည်း ကိုယ့်ကိုထည့်ပေးရန်
         await updateDoc(senderRef, {
           friends: arrayUnion({
             uid: currentUser.uid,
@@ -420,7 +411,6 @@
       }
     }
 
-    // Request ကို ငြင်းပယ်ခြင်း (Reject)
     async function rejectRequest(reqUser) {
       try {
         const myRef = doc(db, "users", currentUser.uid);
@@ -443,4 +433,20 @@
       
       friendsSection.classList.add('hidden');
       searchSection.classList.add('hidden');
-      emptyStateMsg.cl
+      emptyStateMsg.classList.add('hidden');
+      chatWrapper.classList.remove('hidden');
+
+      loadMessages();
+    }
+
+    closeChatBtn.addEventListener('click', () => {
+      activeChatRoomId = null;
+      if (unsubscribeListener) unsubscribeListener();
+      chatWrapper.classList.add('hidden');
+      emptyStateMsg.classList.remove('hidden');
+    });
+
+    copyIdBtn.addEventListener('click', () => {
+      if (!myMyanmarId) return;
+      navigator.clipboard.writeText(myMyanmarId).then(() => {
+        alert("မြန်မာ ID (" + myMyanmarId + ") ကို Copy ကူးပြီးပါ
