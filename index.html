@@ -30,8 +30,12 @@
     .result-card { background: white; padding: 8px 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #ddd; margin-top: 5px; }
     .btn-add-friend { background: #25D366; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; }
     
-    .friend-item { background: white; padding: 8px 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; cursor: pointer; border: 1px solid #ddd; }
-    .friend-item:hover { background: #f9f9f9; }
+    .friend-item { background: white; padding: 8px 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; border: 1px solid #ddd; }
+    .friend-info-area { flex: 1; cursor: pointer; }
+    .friend-info-area:hover { opacity: 0.8; }
+    .friend-actions { display: flex; gap: 6px; align-items: center; }
+    .btn-unfriend { background: #ff4d4d; color: white; border: none; padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+    .btn-chat-friend { background: #128c7e; color: white; border: none; padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; }
     
     /* Online Status Indicator */
     .status-dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
@@ -118,7 +122,7 @@
 
       <!-- Friends List Panel -->
       <div id="friends-section" class="panel-box hidden">
-        <div class="section-title">ကျွန်ုပ်၏ သူငယ်ချင်းစာရင်း (Last Seen ပါ)</div>
+        <div class="section-title">ကျွန်ုပ်၏ သူငယ်ချင်းစာရင်း</div>
         <div id="friends-list-area">သူငယ်ချင်း မရှိသေးပါ။</div>
       </div>
 
@@ -148,7 +152,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, collection, addDoc, deleteDoc, query, where, getDocs, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, collection, addDoc, deleteDoc, query, where, getDocs, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyD8PiDczKyJPrQdwyB2EmjlUdFOnr6ACVc",
@@ -321,6 +325,20 @@
       }
     }
 
+    async function removeFriend(friend) {
+      if (!confirm(`${friend.displayName} ကို သူငယ်ချင်းစာရင်းမှ ဖယ်ရှားမှာ သေချာပါသလား?`)) return;
+      try {
+        const userRef = doc(db, "users", currentUser.uid);
+        await updateDoc(userRef, {
+          friends: arrayRemove(friend)
+        });
+        alert("သူငယ်ချင်းစာရင်းမှ ဖယ်ရှားပြီးပါပြီ။");
+        loadFriendsList();
+      } catch (err) {
+        alert("ဖယ်ရှား၍ မရပါ: " + err.message);
+      }
+    }
+
     async function loadFriendsList() {
       if (!currentUser) return;
       const userRef = doc(db, "users", currentUser.uid);
@@ -349,9 +367,9 @@
             if (isOnline) {
               statusTextDisplay = "Online";
             } else if (data.lastSeen && typeof data.lastSeen.toDate === 'function') {
-              // Firebase Timestamp ကို Date သို့ အတိအကျပြောင်းခြင်း
               const dateObj = data.lastSeen.toDate();
-              const timeString = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              // ရက်စွဲနှင့် အချိန် (နာရီ၊ မိနစ်၊ စက္ကန့် အတိအကျ) ပေါ်စေရန်
+              const timeString = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
               const dateString = dateObj.toLocaleDateString();
               statusTextDisplay = `Last seen: ${dateString} ${timeString}`;
             }
@@ -360,16 +378,31 @@
           const item = document.createElement('div');
           item.className = 'friend-item';
           item.innerHTML = `
-            <div>
+            <div class="friend-info-area">
               <span class="status-dot ${isOnline ? 'status-online' : 'status-offline'}"></span>
               <strong>${friend.displayName}</strong><br/>
               <small style="color:#666; margin-left: 15px;">${statusTextDisplay}</small>
             </div>
-            <span style="font-size:12px; color:#128c7e; font-weight:bold;">စကားပြောမည် 💬</span>
+            <div class="friend-actions">
+              <button class="btn-chat-friend">💬 Chat</button>
+              <button class="btn-unfriend">Unfriend</button>
+            </div>
           `;
-          item.addEventListener('click', () => {
+
+          // စကားပြောရန် ခလုတ် သို့မဟုတ် အချက်အလက်ကဒ်ကို နှိပ်လျှင် Chat ရန်
+          item.querySelector('.friend-info-area').addEventListener('click', () => {
             startPrivateChat(friend);
           });
+          item.querySelector('.btn-chat-friend').addEventListener('click', () => {
+            startPrivateChat(friend);
+          });
+
+          // Unfriend ခလုတ် နှိပ်လျှင်
+          item.querySelector('.btn-unfriend').addEventListener('click', (e) => {
+            e.stopPropagation();
+            removeFriend(friend);
+          });
+
           friendsListArea.appendChild(item);
         });
       }
