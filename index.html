@@ -118,7 +118,7 @@
 
       <!-- Friends List Panel -->
       <div id="friends-section" class="panel-box hidden">
-        <div class="section-title">ကျွန်ုပ်၏ သူငယ်ချင်းစာရင်း (Online Status ပါ)</div>
+        <div class="section-title">ကျွန်ုပ်၏ သူငယ်ချင်းစာရင်း (Last Seen ပါ)</div>
         <div id="friends-list-area">သူငယ်ချင်း မရှိသေးပါ။</div>
       </div>
 
@@ -213,7 +213,6 @@
 
       if (userSnap.exists()) {
         myMyanmarId = userSnap.data().myanmarId;
-        // Update status to online
         await updateDoc(userRef, { isOnline: true, lastSeen: serverTimestamp() });
       } else {
         myMyanmarId = generateMyanmarId();
@@ -232,7 +231,6 @@
       loadFriendsList();
     }
 
-    // Handle user offline status when closing window/tab
     window.addEventListener('beforeunload', async () => {
       if (currentUser) {
         const userRef = doc(db, "users", currentUser.uid);
@@ -338,12 +336,25 @@
         }
 
         friends.forEach(async (friend) => {
-          // Fetch real-time online status of friend from database
           const friendRef = doc(db, "users", friend.uid);
           const friendSnap = await getDoc(friendRef);
+          
+          let statusTextDisplay = "Offline";
           let isOnline = false;
+
           if (friendSnap.exists()) {
-            isOnline = friendSnap.data().isOnline || false;
+            const data = friendSnap.data();
+            isOnline = data.isOnline || false;
+
+            if (isOnline) {
+              statusTextDisplay = "Online";
+            } else if (data.lastSeen) {
+              // Firebase timestamp ကို မြန်မာအချိန်အနေဖြင့် အတိအကျပြောင်းရန်
+              const dateObj = data.lastSeen.toDate();
+              const timeString = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              const dateString = dateObj.toLocaleDateString();
+              statusTextDisplay = `Last seen: ${dateString} ${timeString}`;
+            }
           }
 
           const item = document.createElement('div');
@@ -351,8 +362,8 @@
           item.innerHTML = `
             <div>
               <span class="status-dot ${isOnline ? 'status-online' : 'status-offline'}"></span>
-              <strong>${friend.displayName}</strong> <small>(${isOnline ? 'Online' : 'Offline'})</small><br/>
-              <small style="color:#666; margin-left: 15px;">ID: ${friend.myanmarId}</small>
+              <strong>${friend.displayName}</strong><br/>
+              <small style="color:#666; margin-left: 15px;">${statusTextDisplay}</small>
             </div>
             <span style="font-size:12px; color:#128c7e; font-weight:bold;">စကားပြောမည် 💬</span>
           `;
@@ -405,7 +416,7 @@
     logoutBtn.addEventListener('click', async () => {
       if (currentUser) {
         const userRef = doc(db, "users", currentUser.uid);
-        await updateDoc(userRef, { isOnline: false });
+        await updateDoc(userRef, { isOnline: false, lastSeen: serverTimestamp() });
       }
       await signOut(auth);
     });
@@ -502,11 +513,9 @@
             <div class="msg-content-text">${data.text} ${editedLabel}</div>
           `;
 
-          // မိမိပို့ထားသော စာများကို နှိပ်လိုက်ပါက Edit / Delete Menu ပေါ်လာစေရန်
           if (isMe) {
             msgDiv.addEventListener('click', (e) => {
               e.stopPropagation();
-              // Remove existing menus first
               document.querySelectorAll('.msg-menu').forEach(m => m.remove());
 
               const menu = document.createElement('div');
@@ -536,7 +545,6 @@
       });
     }
 
-    // Window ပေါ်ကို တခြားနေရာ နှိပ်လိုက်ရင် Menu ပျောက်သွားအောင်
     window.addEventListener('click', () => {
       document.querySelectorAll('.msg-menu').forEach(m => m.remove());
     });
